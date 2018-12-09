@@ -54,24 +54,37 @@ public class HuffProcessor {
 		writeCompressedBits(codings, in, out);
 		out.close();
 	}
-	
-	
+
+	/**
+	 * Method that reads the file/input stream and compresses it to the output stream
+	 * using encodings that are stored in an array
+	 * @param codings stores encodings for each 8 bit chunk
+	 * @param in is the file to be compressed
+	 * @param out is the compressed file
+	 */
 	private void writeCompressedBits(String[] codings, BitInputStream in, BitOutputStream out) {
 		String code;
 
 		while (true) {
 			int val = in.readBits(BITS_PER_WORD);
-			if (val == -1) break; 
-			
-			code = codings[val];
+			if (val == -1) break;
+
+			//get huffman coding for every 8-bit chunk
+			code = codings[val]; 
 			out.writeBits(code.length(), Integer.parseInt(code,2));
 
 		}
+		//write bits that encode PSEUDO_EOF
 		code = codings[PSEUDO_EOF];
 		out.writeBits(code.length(), Integer.parseInt(code, 2));
 	}
 
-	
+	/**
+	 * Traverses huffman tree using pre-order traversal
+	 * writes one bit for each node, then recursively calls left and right if internal node
+	 * @param root 
+	 * @param out 
+	 */
 	private void writeHeader(HuffNode root, BitOutputStream out) {
 		if (root.myLeft == null && root.myRight == null) {
 			out.writeBits(1, 1);
@@ -85,52 +98,73 @@ public class HuffProcessor {
 		return;
 	}
 
-	
+	/**
+	 * Uses a recursive helper method to return an array of strings
+	 * that contain the 8-bit chunk encoding for each character
+	 * @param root
+	 * @return
+	 */
 	private String[] makeCodingsFromTree(HuffNode root) {
 		String[] encodings = new String[ALPH_SIZE + 1];
 		codingHelper(root, "", encodings);
 		return encodings;
 	}
 
-	
+	/**
+	 * Recursive helper method that adds "0" to path when recursively calling to left 
+	 * and "1" when recursively calling right until reaching a leaf node where the path is returned
+	 * @param root starting node of huffman tree
+	 * @param path current path from root to leaf traversal
+	 * @param encodings string array storing each leaf node encoding
+	 */
 	private void codingHelper(HuffNode root, String path, String[] encodings) {
 		if (root == null) return;
 		if (root.myLeft == null && root.myRight == null) {
 			encodings[root.myValue] = path;
-//			if (myDebugLevel >= DEBUG_HIGH) {
-//				System.out.printf("encoding for %d is %s\n", root.myValue, path);
-//			}
+			//			if (myDebugLevel >= DEBUG_HIGH) {
+			//				System.out.printf("encoding for %d is %s\n", root.myValue, path);
+			//			}
 			return;
 		}
 		codingHelper(root.myLeft, path + "0", encodings);
 		codingHelper(root.myRight, path + "1", encodings);
 	}
 
-	
+	/**
+	 * Uses greedy algorithm and priority queue to create Huffman Tree
+	 * removes minimal weight nodes and updates frequency
+	 * @param counts
+	 * @return
+	 */
 	private HuffNode makeTreeFromCounts(int[] counts) {
 		PriorityQueue<HuffNode> pq = new PriorityQueue<HuffNode>();
-		
-		for (int dex=0; dex<counts.length; dex++) {
+
+		//if a leaf node
+		for (int dex=0; dex<counts.length; dex++) { 
 			if (counts[dex] > 0) {
 				pq.add(new HuffNode(dex, counts[dex], null, null));
-			
 			}
 		}
-
+		//for internal nodes
 		while (pq.size() > 1) {
 			HuffNode left = pq.remove();
 			HuffNode right = pq.remove();
 			HuffNode t = new HuffNode(0, left.myWeight + right.myWeight, left, right);
-//			if (myDebugLevel >= DEBUG_HIGH) {
-//				System.out.printf("pq created with %d nodes\n", pq.size());
-//			}
+			//			if (myDebugLevel >= DEBUG_HIGH) {
+			//				System.out.printf("pq created with %d nodes\n", pq.size());
+			//			}
 			pq.add(t);
 		}
 		HuffNode root = pq.remove();
 		return root;
 	}
 
-	
+	/**
+	 * Determines frequencies of each character from BitInputStream in
+	 * stores those frequencies in an int[]; also adds frequency 1 for PSEUDO_EOF
+	 * @param in
+	 * @return
+	 */
 	private int[] readForCounts(BitInputStream in) {
 		int[] freq = new int[ALPH_SIZE + 1];
 		freq[PSEUDO_EOF] = 1;	
@@ -165,13 +199,24 @@ public class HuffProcessor {
 		out.close();
 	}
 
+	/**
+	 * Read bits from compressed file and use them
+	 * to traverse tree root to leaf, writing leaf values to output file
+	 * Stop when finding PSUEDO_EOF
+	 * @param root
+	 * @param in
+	 * @param out
+	 */
 	private void readCompressedBits(HuffNode root, BitInputStream in, BitOutputStream out) {
 		HuffNode current = root;
+
 		while (true) {
 			int bits = in.readBits(1);
 			if (bits == -1) {
 				throw new HuffException("bad input, no PSEUDO_EOF");
 			}
+
+			// read bit using Huffman tree
 			else {
 				if (bits == 0) current = current.myLeft;
 				else current = current.myRight;
@@ -186,15 +231,20 @@ public class HuffProcessor {
 						current = root;
 					}
 				}
-
 			}
 		}
-
 	}
 
+	/**
+	 * Read tree, stored in pre-order traversal with recursion 
+	 * creates internal nodes and recursively reads until finds leaf node
+	 * Stop when encountering PSEUDO_EOF
+	 * @param in file to decompress
+	 * @return 
+	 */
 	private HuffNode readTreeHeader(BitInputStream in) {
 		int bit = in.readBits(1);
-		if (bit == -1) throw new HuffException("illegal headerhhhh starts with " + bit);
+		if (bit == -1) throw new HuffException("illegal header starts with " + bit);
 
 		if (bit == 0) {
 			HuffNode left = readTreeHeader(in);
